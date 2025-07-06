@@ -4,8 +4,6 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import postgres from "postgres";
-import { signIn } from "@/auth";
-import { AuthError } from "next-auth";
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
 
@@ -36,22 +34,43 @@ export type State = {
   message?: string | null;
 };
 
+type AuthErrorMessages =
+  | "Invalid form data."
+  | "Invalid credentials."
+  | "Something went wrong."
+  | null
+  | undefined;
+
 export async function authenticate(
-  prevState: string | undefined,
+  prevState: AuthErrorMessages,
   formData: FormData
-) {
+): Promise<AuthErrorMessages> {
   try {
-    await signIn("credentials", formData);
-  } catch (error) {
-    if (error instanceof AuthError) {
-      switch (error.type) {
-        case "CredentialsSignin":
-          return "Invalid credentials.";
-        default:
-          return "Something went wrong.";
-      }
+    const email = formData.get("email");
+    const password = formData.get("password");
+
+    if (typeof email !== "string" || typeof password !== "string") {
+      return "Invalid form data.";
     }
-    throw error;
+
+    const res = await fetch("/api/auth/callback/credentials", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        email,
+        password,
+      }),
+    });
+
+    if (!res.ok) {
+      return "Invalid credentials.";
+    }
+
+    return null;
+  } catch {
+    return "Something went wrong.";
   }
 }
 
